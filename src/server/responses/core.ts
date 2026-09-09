@@ -4539,7 +4539,8 @@ async function handleResponsesInner(
     // `tools.apply_patch(...)` helper inside `exec`, never as a wire tool — reached Codex as a
     // call it cannot execute, and the turn showed a bare `aborted` with the file untouched.
     // Forward auth is the canonical ChatGPT backend speaking Codex's own protocol rather than a
-    // routed provider, so it keeps passing through unguarded, as it does for the rewrites above.
+    // routed provider, so native Responses keeps passing through unguarded. Translated
+    // Claude requests still need the guard: their active catalog excludes undiscovered tools.
     // The guard needs a catalog to compare against, so it stands down when the request omits one.
     // An explicit empty catalog is still authoritative: it declares that no client tools may be
     // called. A passthrough request can legitimately omit `tools` entirely and still receive a call
@@ -4646,7 +4647,7 @@ async function handleResponsesInner(
         declaredWireToolNames.size > 0
         || clientDeclaredNamelessCallTypes.size > 0
         || clientExplicitWireToolCatalog
-      ) && route.provider.authMode !== "forward";
+      ) && (route.provider.authMode !== "forward" || options.inboundWire === "anthropic");
     };
     refreshUndeclaredToolGuard(request);
     // A refused turn must not seed `previous_response_id` replay. The inspection branch reads the

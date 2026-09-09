@@ -60,6 +60,15 @@ describe("usage log", () => {
     expect(readFileSync(usageLogPath(), "utf8")).not.toContain("private-");
   });
 
+  test("supported discovery features are not regenerated as shadow failures", () => {
+    const row = normalizeClaudeCompatibilityUsageLog({ decision: "shadow",
+      featureCodes: ["deferred_tools", "tool_reference", "documents"],
+      unsupportedFeatureCodes: ["documents", "private-name", "service_tier"], reason: "private-reason" });
+    expect(row).toEqual({ decision: "shadow", featureCodes: ["deferred_tools", "documents", "tool_reference"],
+      unsupportedFeatureCodes: ["documents"], reason: "shadow: would reject: documents" });
+    expect(normalizeClaudeCompatibilityUsageLog(row)).toEqual(row);
+  });
+
   test("legacy and malformed persisted Claude metadata does not poison readers", () => {
     const base = { requestId: "claude-legacy", timestamp: 1, provider: "mock", model: "test-model",
       status: 200, durationMs: 1, usageStatus: "unreported" };

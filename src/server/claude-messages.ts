@@ -744,6 +744,7 @@ async function handleClaudeMessagesWithBudget(
         logCtx.claudeCompatibility = {
           decision: "shadow",
           featureCodes: compatibility.featureCodes,
+          ...(compatibility.unsupportedFeatureCodes ? { unsupportedFeatureCodes: compatibility.unsupportedFeatureCodes } : {}),
           reason: compatibility.reason,
         };
       }

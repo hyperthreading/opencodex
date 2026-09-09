@@ -285,8 +285,60 @@ describe("claude inbound translation", () => {
     });
   });
 
+  test("captured CLI contract adds the selected deferred declaration after search", () => {
+    const fixture = JSON.parse(readFileSync(repoPath("tests", "fixtures", "claude-tool-search-client.json"), "utf8"));
+    const { search, placeholder, selected } = fixture.tools;
+    const first = anthropicToResponsesBody({ model: "m", tools: [placeholder, search], messages: fixture.messages.slice(0, 2) }) as any;
+    expect(first.tools.map((t: any) => t.name)).toEqual(["ToolSearch"]);
+    for (const end of [4, 6]) {
+      const next = anthropicToResponsesBody({ model: "m", tools: [search, placeholder, selected], messages: fixture.messages.slice(0, end) }) as any;
+      expect(next.tools.map((t: any) => t.name)).toEqual(["ToolSearch", "mcp__synthetic__beta"]);
+      expect(JSON.stringify(next.input)).toContain("tool available: mcp__synthetic__beta");
+      expect(JSON.stringify(next)).not.toContain("Reserved placeholder");
+    }
+  });
+
+  test("discovery exposes only current definitions selected by paired references", () => {
+    const tool = (name: string, deferred = false) => ({ name, defer_loading: deferred, description: `${name}-sentinel`, input_schema: { type: "object", properties: { query: { type: "string" } } } });
+    const tools = [tool("find"), tool("alpha", true), tool("beta", true)];
+    const start = { role: "user", content: "find beta" };
+    const call = { role: "assistant", content: [{ type: "tool_use", name: "find", id: "s1", input: {} }] };
+    const result = { role: "user", content: [{ type: "tool_result", tool_use_id: "s1", content: [
+      { type: "text", text: "Found it" }, { type: "tool_reference", tool_name: "beta" },
+      { type: "tool_reference", tool_name: "beta" }, { type: "tool_reference", tool_name: "removed" },
+    ] }] };
+    const translate = (messages: unknown[], current = tools) => anthropicToResponsesBody({ model: "m", tools: current, messages }) as any;
+    expect(translate([start]).tools.map((t: any) => t.name)).toEqual(["find"]);
+    const found = translate([start, call, result]);
+    expect(found.tools.map((t: any) => t.name)).toEqual(["find", "beta"]);
+    expect(found.tools.every((t: any) => t.defer_loading === undefined)).toBe(true);
+    expect(JSON.stringify(found)).not.toContain("alpha-sentinel");
+    expect(JSON.stringify(found.input)).toContain("tool available: beta");
+    expect(JSON.stringify(found.input)).toContain("tool unavailable: removed");
+    expect(found.input[1]).toMatchObject({ type: "function_call", call_id: "s1", name: "find" });
+    const changed = tools.map(t => t.name === "beta" ? { ...t, description: "new-schema" } : t);
+    expect(translate([start, call, result], changed).tools[1].description).toBe("new-schema");
+    expect(translate([start, call, result], tools.slice(0, 2)).tools.map((t: any) => t.name)).toEqual(["find"]);
+    expect(translate([start, result]).tools.map((t: any) => t.name)).toEqual(["find"]);
+    expect(translate([start, call, call, result]).tools.map((t: any) => t.name)).toEqual(["find"]);
+    expect(translate([start, call, result, result]).tools.map((t: any) => t.name)).toEqual(["find"]);
+    const failed = { ...result, content: result.content.map(b => ({ ...b, is_error: true })) };
+    expect(translate([start, call, failed]).tools.map((t: any) => t.name)).toEqual(["find"]);
+    const textOnly = { ...result, content: [{ type: "tool_result", tool_use_id: "s1", content: JSON.stringify({ type: "tool_reference", tool_name: "beta" }) }] };
+    expect(translate([start, call, textOnly]).tools.map((t: any) => t.name)).toEqual(["find"]);
+    const secondCall = { role: "assistant", content: [{ type: "tool_use", name: "find", id: "s2", input: {} }] };
+    const secondResult = { role: "user", content: [{ type: "tool_result", tool_use_id: "s2", content: [{ type: "tool_reference", tool_name: "alpha" }] }] };
+    expect(translate([start, call, result, secondCall, secondResult]).tools.map((t: any) => t.name)).toEqual(["find", "alpha", "beta"]);
+    expect(translate([start, call, secondCall, secondResult, result]).tools.map((t: any) => t.name)).toEqual(["find", "alpha", "beta"]);
+    expect(translate([start], [tool("beta", true)]).tools).toEqual([]);
+    expect(translate([start, { role: "assistant", content: [{ type: "tool_use", id: "b", name: "beta", input: {} }] }]).tools.map((t: any) => t.name)).toEqual(["find"]);
+    expect(() => translate([start], [...tools, tool("beta", true)])).toThrow("unique tool names");
+    expect(() => anthropicToResponsesBody({ model: "m", tools, messages: [start], tool_choice: { type: "tool", name: "beta" } })).toThrow("not active");
+    expect(() => anthropicToResponsesBody({ model: "m", tools: [tool("beta", true)], messages: [start], tool_choice: { type: "any" } })).toThrow("active tool");
+  });
+
   test("tool_choice any/tool/none", () => {
-    const base = { model: "m", max_tokens: 10, messages: [{ role: "user", content: "hi" }] };
+    const base = { model: "m", max_tokens: 10, tools: [{ name: "Read", input_schema: { type: "object", properties: {} } }], messages: [{ role: "user", content: "hi" }] };
     expect((anthropicToResponsesBody({ ...base, tool_choice: { type: "any" } }) as any).tool_choice).toBe("required");
     expect((anthropicToResponsesBody({ ...base, tool_choice: { type: "none" } }) as any).tool_choice).toBe("none");
     expect((anthropicToResponsesBody({ ...base, tool_choice: { type: "tool", name: "Read" } }) as any).tool_choice)

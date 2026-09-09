@@ -14,6 +14,7 @@ import { claudeCompatibilityReason, normalizeClaudeFeatureCodes, type ClaudeFeat
 export interface PersistedClaudeCompatibilityLog {
   decision: "shadow";
   featureCodes: ClaudeFeatureCode[];
+  unsupportedFeatureCodes?: ClaudeFeatureCode[];
   reason?: string;
 }
 
@@ -23,9 +24,13 @@ export function normalizeClaudeCompatibilityUsageLog(value: unknown): PersistedC
   const row = value as Record<string, unknown>;
   if (row.decision !== "shadow") return undefined;
   const featureCodes = normalizeClaudeFeatureCodes(row.featureCodes);
-  const reason = claudeCompatibilityReason(featureCodes, true);
+  const unsupportedFeatureCodes = Array.isArray(row.unsupportedFeatureCodes)
+    ? normalizeClaudeFeatureCodes(row.unsupportedFeatureCodes).filter(code => featureCodes.includes(code))
+    : undefined;
+  const reason = claudeCompatibilityReason(unsupportedFeatureCodes ?? featureCodes, true);
   if (!reason) return undefined;
-  return { decision: "shadow", featureCodes, reason };
+  return { decision: "shadow", featureCodes,
+    ...(unsupportedFeatureCodes ? { unsupportedFeatureCodes } : {}), reason };
 }
 
 export type UsageStatus = "reported" | "unreported" | "unsupported" | "estimated";

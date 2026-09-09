@@ -518,6 +518,28 @@ Claude Code's `/effort` setting is preserved across the adapter:
 
 The resolved value appears in the request log's **Reasoning effort** column.
 
+## Client-executed ToolSearch
+
+Translated Messages requests support ordinary client search functions with `defer_loading: true`
+tool declarations and paired `tool_result` / `tool_reference` results. The proxy sends only
+nondeferred definitions and currently declared tools discovered by successful search results.
+It does not send the hidden catalog to the upstream provider or run a search engine itself.
+Search calls and selected-tool calls use the normal `tool_use` round trip in SSE and JSON.
+
+Current declarations remain authoritative: changed schemas replace old ones, removed tools stay
+unavailable, and losing search history during compaction or resume requires another search.
+Unknown references and failed or unmatched results never unlock the catalog. A forced
+`tool_choice` for a hidden or absent tool fails with 400 rather than silently switching to `auto`.
+
+`claudeCode.compatibility: "enforce"` admits this client form, but not hosted regex/bm25 search,
+server-executed search results, or other deferred catalog carriers. Native Anthropic passthrough
+is unchanged. On custom hosts Claude Code may disable ToolSearch; explicitly enabling it for the
+client process is separate from proxy support and is not forced by opencodex.
+
+The wire shape was checked with an isolated Claude Code 2.1.263 direct CLI and synthetic MCP tools.
+The production Responses adapter is covered with mocked external transport; real Codex service
+acceptance and the direct auto-connect launch path have not yet been verified for this feature.
+
 ## Inbound translation (Messages → Responses)
 
 The proxy translates every Anthropic Messages API request into the Codex Responses API format:

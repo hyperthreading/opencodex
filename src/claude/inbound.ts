@@ -17,6 +17,7 @@ export { resolveInboundModel, effortForThinkingBudget, effortFromOutputConfig, e
 import { AnthropicRequestError, isRec, type Rec } from "./inbound-records";
 import { resolveInboundModel, effortForThinkingBudget, effortFromOutputConfig, formatFromOutputConfig } from "./inbound-model-options";
 import { systemToInstructions, toolsToResponses, toolChoiceToResponses } from "./inbound-content-options";
+import { analyzeClaudeToolDiscovery, type ClaudeToolDiscovery } from "./tool-discovery";
 import { decodeReasoningEnvelope, encodeReasoningEnvelope, OCX_REASONING_PREFIX } from "../responses/reasoning-envelope";
 import { createTranslatorBudget, type TranslatorBudget } from "../lib/translator-budget";
 
@@ -40,7 +41,7 @@ function imageBlockToInputImage(block: Rec): Rec | null {
   return null;
 }
 
-function toolResultOutput(block: Rec): string | Rec[] {
+function toolResultOutput(block: Rec, discovery: ClaudeToolDiscovery): string | Rec[] {
   const isError = block.is_error === true;
   const content = block.content;
   if (typeof content === "string") return isError ? `[tool error] ${content}` : content;
@@ -50,6 +51,8 @@ function toolResultOutput(block: Rec): string | Rec[] {
       if (!isRec(item)) continue;
       if (item.type === "text" && typeof item.text === "string") {
         out.push({ type: "input_text", text: item.text });
+      } else if (item.type === "tool_reference") {
+        out.push({ type: "input_text", text: discovery.referenceText.get(item) ?? "[tool reference unavailable]" });
       } else if (item.type === "image") {
         const img = imageBlockToInputImage(item);
         if (img) out.push(img);
@@ -165,7 +168,7 @@ function systemMessageText(content: unknown): string {
   return parts.join("\n\n");
 }
 
-function userMessageToItems(content: unknown, input: Rec[], elide: SkillElisionContext = NO_ELISION): void {
+function userMessageToItems(content: unknown, input: Rec[], discovery: ClaudeToolDiscovery, elide: SkillElisionContext = NO_ELISION): void {
   if (typeof content === "string") {
     if (content.length > 0) pushUserMessage(input, [{ type: "input_text", text: content }]);
     return;
@@ -195,7 +198,7 @@ function userMessageToItems(content: unknown, input: Rec[], elide: SkillElisionC
           type: "function_call_output",
           call_id: raw.tool_use_id,
           // Blocked-skill bundles are stubbed out for routed models (devlog 060).
-          output: elide.callIds.has(raw.tool_use_id) ? skillElisionStub(raw.tool_use_id) : toolResultOutput(raw),
+          output: elide.callIds.has(raw.tool_use_id) ? skillElisionStub(raw.tool_use_id) : toolResultOutput(raw, discovery),
         });
         break;
       }
@@ -318,6 +321,8 @@ function translateAnthropicRequest(raw: unknown, cc: OcxClaudeCodeConfig | undef
     throw new AnthropicRequestError("messages must be a non-empty array");
   }
 
+  const discovery = analyzeClaudeToolDiscovery(raw);
+  if (discovery.ambiguousDeclarations) throw new AnthropicRequestError("Deferred tool discovery requires unique tool names");
   const input: Rec[] = [];
   const systemParts: string[] = [];
   const topLevelSystem = systemToInstructions(raw.system);
@@ -329,7 +334,7 @@ function translateAnthropicRequest(raw: unknown, cc: OcxClaudeCodeConfig | undef
   };
   for (const msg of raw.messages) {
     if (!isRec(msg)) throw new AnthropicRequestError("each message must be an object");
-    if (msg.role === "user") userMessageToItems(msg.content, input, elide);
+    if (msg.role === "user") userMessageToItems(msg.content, input, discovery, elide);
     else if (msg.role === "assistant") assistantMessageToItems(msg.content, input, budget);
     else if (msg.role === "system") {
       const text = systemMessageText(msg.content);
@@ -347,9 +352,16 @@ function translateAnthropicRequest(raw: unknown, cc: OcxClaudeCodeConfig | undef
 
   if (systemParts.length > 0) body.instructions = systemParts.join("\n\n");
 
-  const tools = toolsToResponses(raw.tools);
-  if (tools) body.tools = tools;
+  const tools = toolsToResponses(discovery.tools);
+  if (tools || Array.isArray(raw.tools)) body.tools = tools ?? [];
   toolChoiceToResponses(raw.tool_choice, body);
+  if (isRec(body.tool_choice) && body.tool_choice.type === "function"
+    && !tools?.some(tool => tool.type === "function" && tool.name === (body.tool_choice as Rec).name)) {
+    throw new AnthropicRequestError("tool_choice names a tool that is not active; discover it first");
+  }
+  if (body.tool_choice === "required" && !tools?.length) {
+    throw new AnthropicRequestError("tool_choice.any requires an active tool");
+  }
 
   if (typeof raw.max_tokens === "number") body.max_output_tokens = raw.max_tokens;
   if (typeof raw.temperature === "number") body.temperature = raw.temperature;

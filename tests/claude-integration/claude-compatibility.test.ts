@@ -20,7 +20,7 @@ describe("Claude translated compatibility", () => {
     ["hosted search history", assistantBlock({ type: "server_tool_use", name: "tool_search", id: "srv1", input: {} }), ["tool_search"]],
     ["search result", userBlock({ type: "tool_search_tool_result", tool_use_id: "srv1", content: { type: "tool_search_tool_search_result", tool_references: [] } }), ["tool_search"]],
     ["client search reference", userBlock({ type: "tool_result", tool_use_id: "t1", content: [{ type: "tool_reference", tool_name: "lookup" }] }), ["tool_reference"]],
-    ["deferred tool", { tools: [{ ...functionTool, defer_loading: true }] }, ["deferred_tools"]],
+    ["unsupported deferred carrier", { tools: [{ ...functionTool, defer: true }] }, ["deferred_tools"]],
     ["strict tool", { tools: [{ ...functionTool, strict: true }] }, ["strict_tools"]],
     ["programmatic caller", { tools: [{ ...functionTool, allowed_callers: ["code_execution_20260120"] }] }, ["caller_mode"]],
     ["caller replay", assistantBlock({ type: "tool_use", name: "lookup", id: "t1", input: {}, caller: { type: "code_execution_20260120", tool_id: "srv1" } }), ["caller_mode"]],
@@ -101,6 +101,26 @@ describe("Claude translated compatibility", () => {
     expect(analyzeClaudeCompatibility({}, { mode: "enforce", anthropicBeta: "private-header" })).toEqual({
       decision: "allow", compatible: true, featureCodes: ["unknown_beta"],
     });
+  });
+
+  test("client discovery is admitted by shape while feature detection remains visible", () => {
+    const tools = [{ ...functionTool, name: "find" }, { ...functionTool, defer_loading: true }];
+    const messages = [
+      { role: "assistant", content: [{ type: "tool_use", id: "search1", name: "find", input: {} }] },
+      { role: "user", content: [{ type: "tool_result", tool_use_id: "search1", content: [{ type: "tool_reference", tool_name: "lookup" }] }] },
+    ];
+    for (const mode of ["enforce", "shadow"] as const) {
+      expect(analyzeClaudeCompatibility({ tools }, { mode })).toEqual({
+        decision: "allow", compatible: true, featureCodes: ["deferred_tools"],
+      });
+      expect(analyzeClaudeCompatibility({ tools, messages }, { mode })).toEqual({
+        decision: "allow", compatible: true, featureCodes: ["deferred_tools", "tool_reference"],
+      });
+    }
+    expect(analyzeClaudeCompatibility({ tools, messages, service_tier: "priority" }, { mode: "enforce" }).reason)
+      .toBe("unsupported translated Claude features: service_tier");
+    expect(analyzeClaudeCompatibility({ tools, messages: [...messages, messages[1]] }, { mode: "enforce" }).decision).toBe("reject");
+    expect(analyzeClaudeCompatibility({ tools, messages: [{ role: "user", content: [{ type: "tool_reference", tool_name: "lookup" }] }] }, { mode: "enforce" }).decision).toBe("reject");
   });
 
   test("mode recognition is exact", () => {

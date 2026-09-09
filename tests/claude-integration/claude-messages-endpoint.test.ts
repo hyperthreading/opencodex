@@ -711,6 +711,76 @@ test("native openai-responses route carries prompt_cache_key + synthesized sessi
   }
 });
 
+test("Claude discovery reaches the production Responses wire as an active-only catalog", async () => {
+  const captured: any[] = [];
+  let emitted = "ToolSearch";
+  const upstream = Bun.serve({ port: 0, async fetch(req) {
+    captured.push(await req.json());
+    const item = { type: "function_call", id: `fc_${emitted}`, call_id: emitted === "ToolSearch" ? "call_discovery" : `call_${emitted}`, name: emitted, arguments: JSON.stringify({ query: "synthetic" }), status: "completed" };
+    const response = { id: "resp_discovery", status: "completed", output: [item], usage: { input_tokens: 10, output_tokens: 2 } };
+    return new Response([
+      ["response.created", { response: { id: response.id, status: "in_progress", output: [] } }],
+      ["response.output_item.added", { output_index: 0, item: { ...item, arguments: "", status: "in_progress" } }],
+      ["response.function_call_arguments.delta", { output_index: 0, item_id: item.id, delta: item.arguments }],
+      ["response.function_call_arguments.done", { output_index: 0, item_id: item.id, arguments: item.arguments }],
+      ["response.output_item.done", { output_index: 0, item }],
+      ["response.completed", { response }],
+    ].map(([type, payload]) => `event: ${type}\ndata: ${JSON.stringify({ type, ...(payload as object) })}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } });
+  } });
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
+    if (url.origin === "https://chatgpt.com") return originalFetch(new URL("/responses", upstream.url), init);
+    return originalFetch(input, init);
+  }) as typeof fetch;
+  saveConfig({ port: 0, defaultProvider: "native", claudeCode: { compatibility: "enforce" }, providers: {
+    native: { adapter: "openai-responses", baseUrl: "https://chatgpt.com/backend-api/codex", authMode: "forward" },
+  } } as OcxConfig);
+  const server = startServer(0);
+  const tool = (name: string, deferred = false) => ({ name, description: `${name}-schema-sentinel`, input_schema: { type: "object", properties: { query: { type: "string" } } }, defer_loading: deferred });
+  const tools = [tool("ToolSearch"), tool("alpha", true), tool("beta", true)];
+  const initial = [{ role: "user", content: "find beta" }];
+  try {
+    for (const stream of [false, true]) {
+      const send = async (messages: any[]) => fetch(new URL("/v1/messages", server.url), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: "native/gpt-test", max_tokens: 64, stream, tools, messages }) });
+      emitted = "ToolSearch";
+      const first = await send(initial);
+      expect(first.status).toBe(200);
+      const firstText = await first.text();
+      expect(firstText).toContain('"name":"ToolSearch"');
+      expect(captured.at(-1).tools.map((t: any) => t.name)).toEqual(["ToolSearch"]);
+      expect(JSON.stringify(captured.at(-1))).not.toContain("alpha-schema-sentinel");
+      expect(JSON.stringify(captured.at(-1))).not.toContain("beta-schema-sentinel");
+      const history = [...initial, { role: "assistant", content: [{ type: "tool_use", id: "call_discovery", name: "ToolSearch", input: { query: "synthetic" } }] },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "call_discovery", content: [{ type: "tool_reference", tool_name: "beta" }] }] }];
+      emitted = "beta";
+      const second = await send(history);
+      expect(second.status).toBe(200);
+      expect(await second.text()).toContain('"name":"beta"');
+      expect(captured.at(-1).tools.map((t: any) => t.name)).toEqual(["ToolSearch", "beta"]);
+      expect(JSON.stringify(captured.at(-1))).not.toContain("alpha-schema-sentinel");
+      expect(JSON.stringify(captured.at(-1).input)).toContain("tool available: beta");
+      expect(captured.at(-1).tools.every((t: any) => t.defer_loading === undefined)).toBe(true);
+      const continued = await send([...history,
+        { role: "assistant", content: [{ type: "tool_use", id: "call_beta", name: "beta", input: { query: "synthetic" } }] },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "call_beta", content: "synthetic-ok" }] },
+      ]);
+      expect(continued.status).toBe(200);
+      await continued.text();
+      expect(captured.at(-1).input).toContainEqual({ type: "function_call_output", call_id: "call_beta", output: "synthetic-ok" });
+      expect(captured.at(-1).tools.map((t: any) => t.name)).toEqual(["ToolSearch", "beta"]);
+      emitted = "alpha";
+      const hidden = await send(history);
+      const hiddenBody = await hidden.text();
+      expect(hiddenBody).toContain("undeclared");
+      expect(hiddenBody).not.toContain('"type":"tool_use"');
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+    await server.stop(true);
+    upstream.stop(true);
+  }
+});
+
 test("native openai-responses Claude route logs cyber terminals as 400 cyber_policy", async () => {
   clearRequestLogsForTests();
   const upstream = Bun.serve({
@@ -1399,7 +1469,7 @@ test("compatibility is uniform across translated adapters and rejects before inf
     { messages: [{ role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: [{ type: "document" }] }] }] },
     { messages: [{ role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: [{ type: "tool_reference", tool_name: "lookup" }] }] }] },
     { tools: [{ type: "tool_search_tool_regex_20251119", name: "tool_search" }] },
-    { tools: [{ name: "lookup", input_schema: { type: "object" }, defer_loading: true }] },
+    { tools: [{ name: "lookup", input_schema: { type: "object" }, defer: true }] },
     { tools: [{ name: "lookup", input_schema: { type: "object" }, strict: true }] },
     { tools: [{ name: "lookup", input_schema: { type: "object" }, allowed_callers: ["code_execution_20260120"] }] },
     { tools: [{ type: "web_search_20250305", name: "web_search", allowed_domains: ["example.invalid"] }] },

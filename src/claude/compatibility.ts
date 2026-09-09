@@ -1,3 +1,5 @@
+import { analyzeClaudeToolDiscovery } from "./tool-discovery";
+
 /** Opt-in admission for the translated Messages path; no adapter or credential state. */
 export type ClaudeCompatibilityMode = "shadow" | "enforce";
 
@@ -170,6 +172,7 @@ function detectFeatures(body: unknown, anthropicBeta?: string): Set<ClaudeFeatur
 
 export interface ClaudeCompatibilityResult {
   featureCodes: ClaudeFeatureCode[];
+  unsupportedFeatureCodes?: ClaudeFeatureCode[];
   compatible: boolean;
   decision: "allow" | "shadow" | "reject";
   reason?: string;
@@ -181,12 +184,23 @@ export function analyzeClaudeCompatibility(
   opts: { mode: ClaudeCompatibilityMode; anthropicBeta?: string },
 ): ClaudeCompatibilityResult {
   const detected = detectFeatures(body, opts.anthropicBeta);
-  const compatible = !FEATURE_CODES.some(code => detected.has(code) && FEATURES[code]);
+  const unsupported = new Set([...detected].filter(code => FEATURES[code]));
+  if (isRec(body)) {
+    const discovery = analyzeClaudeToolDiscovery(body);
+    if (!discovery.unsupportedDeferred && !discovery.ambiguousDeclarations) unsupported.delete("deferred_tools");
+    if (!discovery.unsupportedReferences && !discovery.ambiguousDeclarations) unsupported.delete("tool_reference");
+  }
+  const compatible = unsupported.size === 0;
   const featureCodes = normalizeClaudeFeatureCodes([...detected]);
   return {
     featureCodes,
     compatible,
     decision: compatible ? "allow" : opts.mode === "shadow" ? "shadow" : "reject",
-    ...(!compatible ? { reason: claudeCompatibilityReason(featureCodes, opts.mode === "shadow") } : {}),
+    ...(!compatible ? {
+      ...(detected.has("deferred_tools") && !unsupported.has("deferred_tools")
+        || detected.has("tool_reference") && !unsupported.has("tool_reference")
+        ? { unsupportedFeatureCodes: normalizeClaudeFeatureCodes([...unsupported]) } : {}),
+      reason: claudeCompatibilityReason(normalizeClaudeFeatureCodes([...unsupported]), opts.mode === "shadow"),
+    } : {}),
   };
 }

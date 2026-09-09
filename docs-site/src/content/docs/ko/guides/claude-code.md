@@ -402,6 +402,27 @@ Claude Code의 `/effort` 설정은 어댑터에서도 유지돼요.
 
 해석된 값은 요청 로그의 **Reasoning effort** 열에 표시돼요.
 
+## 클라이언트 실행형 ToolSearch
+
+번역된 Messages 요청은 일반 검색 함수, `defer_loading: true` 선언, 호출 ID로 연결된
+`tool_result` 안의 `tool_reference`를 지원해요. 검색 전에는 기본 활성 도구만 보내고,
+성공한 검색 후에는 현재 요청에 선언된 선택 도구만 추가해요. 숨겨진 전체 카탈로그를
+upstream에 보내거나 프록시가 검색엔진을 실행하지 않아요. 검색과 선택 도구 호출은
+기존 `tool_use` 경로로 SSE와 JSON에서 왕복해요.
+
+현재 선언이 기준이므로 변경된 스키마를 사용하고 삭제된 도구는 복구하지 않아요.
+compact/resume으로 검색 이력을 잃으면 재검색해야 해요. 실패·미연결 결과나 알 수 없는
+참조는 도구를 활성화하지 않으며, 숨겨진 도구를 강제 선택하면 `auto`로 바꾸지 않고 400을 반환해요.
+
+`claudeCode.compatibility: "enforce"`도 이 클라이언트 형식은 허용하지만 hosted regex/bm25,
+서버 실행형 검색 결과, 다른 deferred 카탈로그 형식은 지원하지 않아요. native Anthropic
+패스스루는 변경하지 않아요. custom host에서 Claude Code가 검색을 끌 수 있으며,
+클라이언트 프로세스에서 검색을 켜는 설정과 프록시 지원은 별개예요. opencodex가 강제하지 않아요.
+
+격리된 Claude Code 2.1.263 직접 실행과 합성 MCP 도구로 wire 형식을 확인했어요.
+production Responses 어댑터 테스트는 외부 전송을 mock하며, 실제 Codex 서비스 수락과
+직접 auto-connect 실행 경로는 아직 검증하지 않았어요.
+
 ## 입력 변환(Messages → Responses)
 
 프록시는 모든 Anthropic Messages API 요청을 Codex Responses API 형식으로 변환해요.

@@ -1,0 +1,16 @@
+{
+  "source": "Claude Code 2.1.263, isolated direct CLI, ENABLE_TOOL_SEARCH=true, loopback mock Messages, synthetic stdio MCP; manually reduced, not a raw capture",
+  "tools": {
+    "search": { "name": "ToolSearch", "description": "Find synthetic tools", "input_schema": { "type": "object", "properties": { "query": { "type": "string" }, "max_results": { "type": "number" } }, "required": ["query", "max_results"] } },
+    "placeholder": { "name": "DeferredToolPlaceholder", "description": "Reserved placeholder; never call", "input_schema": { "type": "object", "properties": {} }, "defer_loading": true },
+    "selected": { "name": "mcp__synthetic__beta", "description": "Synthetic beta lookup", "input_schema": { "type": "object", "properties": { "query": { "type": "string" } }, "required": ["query"] }, "defer_loading": true }
+  },
+  "messages": [
+    { "role": "user", "content": "Find synthetic beta" },
+    { "role": "system", "content": [{ "type": "text", "text": "Deferred tools: mcp__synthetic__alpha, mcp__synthetic__beta, mcp__synthetic__gamma. Use ToolSearch first." }] },
+    { "role": "assistant", "content": [{ "type": "tool_use", "id": "toolu_search", "name": "ToolSearch", "input": { "query": "select:mcp__synthetic__beta", "max_results": 1 } }] },
+    { "role": "user", "content": [{ "type": "tool_result", "tool_use_id": "toolu_search", "content": [{ "type": "tool_reference", "tool_name": "mcp__synthetic__beta" }] }, { "type": "text", "text": "Tool loaded." }] },
+    { "role": "assistant", "content": [{ "type": "tool_use", "id": "toolu_beta", "name": "mcp__synthetic__beta", "input": { "query": "test" } }] },
+    { "role": "user", "content": [{ "type": "tool_result", "tool_use_id": "toolu_beta", "content": [{ "type": "text", "text": "synthetic-ok" }] }] }
+  ]
+}
