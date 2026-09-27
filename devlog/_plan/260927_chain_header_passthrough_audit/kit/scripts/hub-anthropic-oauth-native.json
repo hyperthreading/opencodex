@@ -1,0 +1,38 @@
+{
+  "port": 10200,
+  "hostname": "192.0.2.2",
+  "runtimeRole": "hub",
+  "hub": {},
+  "providers": {
+    "mock-oai": {
+      "adapter": "openai-responses",
+      "baseUrl": "http://127.0.0.1:10300/v1",
+      "apiKey": "mock-oai-key-TRACE",
+      "allowPrivateNetwork": true
+    },
+    "mock-ant": {
+      "adapter": "anthropic",
+      "baseUrl": "http://127.0.0.1:10300",
+      "apiKey": "mock-ant-key-TRACE",
+      "allowPrivateNetwork": true
+    },
+    "anthropic": {
+      "adapter": "anthropic",
+      "baseUrl": "https://api.anthropic.com",
+      "authMode": "oauth"
+    }
+  },
+  "defaultProvider": "anthropic",
+  "websockets": true,
+  "codexAutoStart": false,
+  "codexShimAutoRestore": false,
+  "anthropicAccountPool": {
+    "enabled": false
+  },
+  "protocols": {
+    "rollout": {
+      "managedMessagesNative": true,
+      "managedMessagesNativeOAuth": true
+    }
+  }
+}

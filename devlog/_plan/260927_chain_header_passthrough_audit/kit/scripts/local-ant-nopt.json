@@ -1,0 +1,26 @@
+{
+  "port": 10100,
+  "hostname": "127.0.0.1",
+  "providers": {
+    "hub": {
+      "adapter": "openai-responses",
+      "baseUrl": "http://192.0.2.2:10401/v1",
+      "apiKey": "__HUB_KEY__",
+      "allowPrivateNetwork": true
+    },
+    "hub-ant": {
+      "adapter": "anthropic",
+      "baseUrl": "http://192.0.2.2:10401",
+      "apiKey": "__HUB_KEY__",
+      "apiKeyTransport": "x-api-key",
+      "allowPrivateNetwork": true
+    }
+  },
+  "defaultProvider": "hub-ant",
+  "websockets": true,
+  "codexAutoStart": false,
+  "codexShimAutoRestore": false,
+  "claudeCode": {
+    "nativePassthrough": false
+  }
+}

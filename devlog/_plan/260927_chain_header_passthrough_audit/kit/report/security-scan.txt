@@ -1,0 +1,28 @@
+# Security scan (2026-09-27T20:16:10Z)
+upstream (egress) capture files: 63, records: 181
+local→hub (mid) capture files:   28, records: 122
+
+## Invariant: no ocx admission secret reaches the upstream
+ocx admission-secret shapes (ocx_data_/ocx_admin_/ocx_session_) upstream: 0
+(info) bare 'ocx_' substrings upstream, any context:  0
+hub client key literal in upstream captures:        0
+hub admin token literal in upstream captures:       0
+hub service (data) token literal in upstream:       0
+local admin token literal in upstream captures:     0
+files with an admission-secret shape upstream:
+
+## Expected: the ocx key is the local→hub credential
+admission-secret shapes in local→hub (mid) captures: 61
+
+## Client credentials reaching the upstream through ocx (b/c runs only: 48 files)
+Codex dummy key 'sk-client-dummy-TRACE':            0  (0 expected; replaced by provider/pool/main credential)
+Claude dummy key 'dummy-client-key-TRACE':          0  (0 expected; replaced by provider key)
+Codex client ChatGPT account 'acct-client-TRACE':   2 in:
+  cxn-direct-2t-b.jsonl
+Claude sk-ant-* client key (passthrough lane, by design): 6 in:
+  cc-oat-c.jsonl
+  cc-skant-b.jsonl
+  cc-skant-c.jsonl
+
+## ocx_ in ocx process logs
+hub.log: 0  local.log: 0

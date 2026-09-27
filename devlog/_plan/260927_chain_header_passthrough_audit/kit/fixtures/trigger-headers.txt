@@ -1,0 +1,8 @@
+originator: codex_exec
+user-agent: codex_exec/0.157.1 (Ubuntu 24.4.0; x86_64) dumb (codex_exec; 0.157.1)
+session-id: SID_COMPACT_TRACE
+thread-id: SID_COMPACT_TRACE
+x-client-request-id: SID_COMPACT_TRACE
+x-codex-window-id: SID_COMPACT_TRACE:0
+x-codex-beta-features: remote_compaction_v2
+x-codex-turn-metadata: {"request_kind":"compaction","session_id":"SID_COMPACT_TRACE","compaction":{"trigger":"auto","implementation":"responses_compaction_v2"}}

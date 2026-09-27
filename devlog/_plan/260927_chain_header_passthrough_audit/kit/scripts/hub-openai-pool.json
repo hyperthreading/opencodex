@@ -1,0 +1,46 @@
+{
+  "port": 10200,
+  "hostname": "192.0.2.2",
+  "runtimeRole": "hub",
+  "hub": {},
+  "providers": {
+    "mock-oai": {
+      "adapter": "openai-responses",
+      "baseUrl": "http://127.0.0.1:10300/v1",
+      "apiKey": "mock-oai-key-TRACE",
+      "allowPrivateNetwork": true
+    },
+    "mock-ant": {
+      "adapter": "anthropic",
+      "baseUrl": "http://127.0.0.1:10300",
+      "apiKey": "mock-ant-key-TRACE",
+      "allowPrivateNetwork": true
+    },
+    "openai": {
+      "adapter": "openai-responses",
+      "baseUrl": "https://chatgpt.com/backend-api/codex",
+      "authMode": "forward",
+      "codexAccountMode": "pool"
+    }
+  },
+  "defaultProvider": "openai",
+  "websockets": true,
+  "codexAutoStart": false,
+  "codexShimAutoRestore": false,
+  "openaiProviderTierVersion": 2,
+  "subagentModelsVersion": 2,
+  "codexAccounts": [
+    {
+      "id": "main",
+      "email": "hub-main@example.test",
+      "isMain": true
+    },
+    {
+      "id": "pool-a",
+      "email": "pool-a@example.test",
+      "isMain": false,
+      "chatgptAccountId": "acct-pool-TRACE"
+    }
+  ],
+  "activeCodexAccountId": "pool-a"
+}

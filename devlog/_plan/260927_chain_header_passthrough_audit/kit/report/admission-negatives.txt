@@ -1,0 +1,11 @@
+responses, no credential                 401
+responses, x-api-key: <ocx key>          401
+responses, Bearer <ocx key>              200
+responses, x-opencodex-api-key <ocx key> 200
+responses, Bearer unknown ocx_data_ key  401
+messages, no credential                  401
+messages, x-api-key <ocx key>            200
+models, x-api-key <ocx key>              200
+/api/keys with data key (mgmt)           401
+responses, Host: evil.example + Bearer   200
+local (loopback) /v1/models Host: evil   403
